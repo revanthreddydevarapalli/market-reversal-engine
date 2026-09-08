@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: reversal-engine-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reversal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reversal}
+      POSTGRES_DB: ${POSTGRES_DB:-reversal_engine}
+    ports:
+      - "5432:5432"
+    volumes:
+      - reversal_engine_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reversal} -d ${POSTGRES_DB:-reversal_engine}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reversal-engine-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-reversal}:${POSTGRES_PASSWORD:-reversal}@db:5432/${POSTGRES_DB:-reversal_engine}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations
+      - ./scripts:/app/scripts
+    command: >
+      uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  reversal_engine_pgdata:

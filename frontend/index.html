@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reversal Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --bg: #05060a;
+    --panel: rgba(18, 20, 32, 0.55);
+    --panel-border: rgba(120, 140, 255, 0.18);
+    --text: #e8eaf5;
+    --text-dim: #9aa0c0;
+    --accent: #7c8cff;
+    --support: #35e08a;
+    --support-glow: rgba(53, 224, 138, 0.45);
+    --resistance: #ff5d7a;
+    --resistance-glow: rgba(255, 93, 122, 0.45);
+    --near: #ffcf5c;
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text); font-family: var(--font);
+    overflow-x: hidden;
+  }
+  #bg-canvas { position: fixed; inset: 0; z-index: 0; }
+
+  .app {
+    position: relative; z-index: 1;
+    max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px;
+  }
+
+  header { text-align: center; margin-bottom: 36px; }
+  header h1 {
+    font-size: 2.1rem; font-weight: 700; letter-spacing: 0.5px; margin: 0 0 6px;
+    background: linear-gradient(90deg, #a5b4ff, #7c8cff, #ff9dc1);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header p { color: var(--text-dim); margin: 0; font-size: 0.95rem; }
+
+  .tabs { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; }
+  .tab-btn {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    color: var(--text-dim); padding: 8px 18px; border-radius: 999px;
+    cursor: pointer; font-size: 0.85rem; transition: all 0.2s ease;
+    backdrop-filter: blur(10px);
+  }
+  .tab-btn.active { color: var(--text); border-color: var(--accent); box-shadow: 0 0 16px rgba(124,140,255,0.35); }
+
+  .search-wrap { position: relative; max-width: 480px; margin: 0 auto 32px; }
+  #symbol-input {
+    width: 100%; padding: 14px 18px; font-size: 1.05rem;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 14px; color: var(--text); outline: none;
+    backdrop-filter: blur(14px); transition: border-color 0.2s ease;
+  }
+  #symbol-input:focus { border-color: var(--accent); box-shadow: 0 0 22px rgba(124,140,255,0.3); }
+  .autocomplete {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: rgba(14,16,26,0.95); border: 1px solid var(--panel-border);
+    border-radius: 12px; overflow: hidden; backdrop-filter: blur(14px);
+    display: none; z-index: 5;
+  }
+  .autocomplete.open { display: block; }
+  .autocomplete-item {
+    padding: 10px 16px; cursor: pointer; display: flex; justify-content: space-between;
+    font-size: 0.9rem; transition: background 0.15s ease;
+  }
+  .autocomplete-item:hover, .autocomplete-item.highlighted { background: rgba(124,140,255,0.15); }
+  .autocomplete-item .name { color: var(--text-dim); font-size: 0.8rem; }
+
+  .price-banner {
+    text-align: center; margin-bottom: 28px; opacity: 0; transform: translateY(8px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+  .price-banner.show { opacity: 1; transform: translateY(0); }
+  .price-banner .sym { font-size: 1.3rem; color: var(--text-dim); letter-spacing: 2px; }
+  .price-banner .px { font-size: 3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .trend-badge {
+    display: inline-block; margin-top: 8px; padding: 5px 16px; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .trend-UP { background: rgba(53,224,138,0.15); color: var(--support); border: 1px solid rgba(53,224,138,0.35); }
+  .trend-DOWN { background: rgba(255,93,122,0.15); color: var(--resistance); border: 1px solid rgba(255,93,122,0.35); }
+  .trend-FLAT { background: rgba(255,255,255,0.06); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.12); }
+
+  .confirmation-badge {
+    display: inline-flex; align-items: center; gap: 4px; margin-bottom: 8px;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 999px;
+  }
+  .confirmation-badge.confirmed {
+    color: var(--support); background: rgba(53,224,138,0.15); border: 1px solid rgba(53,224,138,0.4);
+  }
+  .confirmation-badge.unconfirmed {
+    color: var(--text-dim); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+  }
+  .checklist { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .checklist-item {
+    display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-dim);
+  }
+  .checklist-item .mark { width: 14px; text-align: center; font-weight: 700; }
+  .checklist-item.pass .mark { color: var(--support); }
+  .checklist-item.fail .mark { color: var(--text-dim); }
+  .checklist-toggle {
+    font-size: 0.72rem; color: var(--accent); cursor: pointer; margin-top: 6px; user-select: none;
+  }
+  .zone-card.primary { border-color: var(--accent); box-shadow: 0 0 26px rgba(124,140,255,0.4); }
+
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 780px) { .columns { grid-template-columns: 1fr; } }
+
+  .col-title {
+    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text-dim); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .col-title.support { color: var(--support); }
+  .col-title.resistance { color: var(--resistance); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.support { background: var(--support); box-shadow: 0 0 10px var(--support-glow); }
+  .dot.resistance { background: var(--resistance); box-shadow: 0 0 10px var(--resistance-glow); }
+
+  .zone-card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 16px; padding: 16px 18px; margin-bottom: 14px;
+    backdrop-filter: blur(12px);
+    opacity: 0; transform: translateY(14px);
+    animation: cardIn 0.45s ease forwards;
+  }
+  @keyframes cardIn { to { opacity: 1; transform: translateY(0); } }
+
+  .zone-card.reached.support { border-color: var(--support); box-shadow: 0 0 24px var(--support-glow); animation: cardIn 0.45s ease forwards, pulseSupport 2.2s ease-in-out infinite 0.5s; }
+  .zone-card.reached.resistance { border-color: var(--resistance); box-shadow: 0 0 24px var(--resistance-glow); animation: cardIn 0.45s ease forwards, pulseResistance 2.2s ease-in-out infinite 0.5s; }
+  @keyframes pulseSupport { 0%,100% { box-shadow: 0 0 18px var(--support-glow); } 50% { box-shadow: 0 0 34px var(--support-glow); } }
+  @keyframes pulseResistance { 0%,100% { box-shadow: 0 0 18px var(--resistance-glow); } 50% { box-shadow: 0 0 34px var(--resistance-glow); } }
+
+  .zone-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .zone-range { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .zone-dist { font-size: 0.78rem; color: var(--text-dim); }
+  .zone-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .chip {
+    font-size: 0.7rem; padding: 3px 9px; border-radius: 999px;
+    background: rgba(255,255,255,0.06); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.08);
+  }
+  .status-badge {
+    font-size: 0.7rem; padding: 3px 10px; border-radius: 999px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .status-WAITING { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+  .status-NEAR { background: rgba(255,207,92,0.15); color: var(--near); }
+  .status-REACHED.support { background: rgba(53,224,138,0.18); color: var(--support); }
+  .status-REACHED.resistance { background: rgba(255,93,122,0.18); color: var(--resistance); }
+
+  .stars { color: #ffd75c; letter-spacing: 1px; }
+
+  .option-card {
+    margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.15);
+    font-size: 0.85rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+  }
+  .option-card .otm-label { color: var(--text-dim); }
+
+  .empty-state { text-align: center; color: var(--text-dim); padding: 60px 20px; font-size: 0.95rem; }
+  .loading { text-align: center; color: var(--text-dim); padding: 40px; font-size: 0.9rem; }
+  .spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid rgba(124,140,255,0.2); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    text-align: center; color: var(--resistance); background: rgba(255,93,122,0.08);
+    border: 1px solid rgba(255,93,122,0.25); border-radius: 12px; padding: 16px; font-size: 0.9rem;
+  }
+
+  .journal-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .journal-table th {
+    text-align: left; color: var(--text-dim); font-weight: 500; padding: 10px 12px;
+    border-bottom: 1px solid var(--panel-border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .journal-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .journal-table tr:hover { background: rgba(255,255,255,0.03); }
+  .side-tag { font-weight: 600; }
+  .side-tag.SUPPORT { color: var(--support); }
+  .side-tag.RESISTANCE { color: var(--resistance); }
+
+  footer { text-align: center; color: var(--text-dim); font-size: 0.72rem; margin-top: 50px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<div class="app">
+  <header>
+    <h1>REVERSAL ENGINE</h1>
+    <p>Volume-profile confluence zones &middot; support &amp; resistance &middot; live options</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="scan">Scan</button>
+    <button class="tab-btn" data-tab="journal">Journal</button>
+  </div>
+
+  <div id="tab-scan">
+    <div class="search-wrap">
+      <input id="symbol-input" type="text" placeholder="Search a symbol&hellip; (e.g. NVDA)" autocomplete="off" />
+      <div class="autocomplete" id="autocomplete-list"></div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <div id="tab-journal" style="display:none;">
+    <div id="journal-results"></div>
+  </div>
+
+  <footer>
+    Research tool &middot; historical volume-profile levels, not trading advice.<br/>
+    Star ratings are a deterministic, unvalidated heuristic &mdash; not a win-rate.<br/>
+    Trend badge and confirmation checks are deterministic heuristics (market structure, liquidity sweeps, FVG/order blocks, options OI) &mdash; not backtested or validated signals.
+  </footer>
+</div>
+
+<script>
+// ---------- Three.js particle background ----------
+(function () {
+  const canvas = document.getElementById('bg-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.z = 60;
+
+  const count = 900;
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * 260;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 260;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 260;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const material = new THREE.PointsMaterial({ color: 0x7c8cff, size: 0.9, transparent: true, opacity: 0.55 });
+  const points = new THREE.Points(geometry, material);
+  scene.add(points);
+
+  let mouseX = 0, mouseY = 0;
+  window.addEventListener('mousemove', (e) => {
+    mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+    mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    points.rotation.y += 0.0006;
+    points.rotation.x += 0.0002;
+    camera.position.x += (mouseX * 8 - camera.position.x) * 0.02;
+    camera.position.y += (-mouseY * 8 - camera.position.y) * 0.02;
+    camera.lookAt(scene.position);
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ---------- App logic ----------
+const API = '';  // same-origin
+let UNIVERSE = [];
+
+async function loadUniverse() {
+  try {
+    const res = await fetch(`${API}/symbols`);
+    UNIVERSE = await res.json();
+  } catch (e) {
+    console.error('Failed to load symbol universe', e);
+  }
+}
+
+function renderAutocomplete(query) {
+  const list = document.getElementById('autocomplete-list');
+  const q = query.trim().toUpperCase();
+  if (!q) { list.classList.remove('open'); list.innerHTML = ''; return; }
+
+  const matches = UNIVERSE.filter(s =>
+    s.symbol.includes(q) || s.name.toUpperCase().includes(q)
+  ).slice(0, 8);
+
+  if (matches.length === 0) { list.classList.remove('open'); list.innerHTML = ''; return; }
+
+  list.innerHTML = matches.map(s => `
+    <div class="autocomplete-item" data-symbol="${s.symbol}">
+      <span><strong>${s.symbol}</strong></span>
+      <span class="name">${s.name}</span>
+    </div>
+  `).join('');
+  list.classList.add('open');
+
+  list.querySelectorAll('.autocomplete-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const sym = item.getAttribute('data-symbol');
+      document.getElementById('symbol-input').value = sym;
+      list.classList.remove('open');
+      runScan(sym);
+    });
+  });
+}
+
+function star(n) {
+  return '&#9733;'.repeat(n) + '<span style="color:#3a3d55">' + '&#9733;'.repeat(5 - n) + '</span>';
+}
+
+function trendLabel(trend) {
+  if (trend === 'UP') return '&#8599; Trending up &mdash; watching resistance';
+  if (trend === 'DOWN') return '&#8600; Trending down &mdash; watching support';
+  return '&#8596; Flat / range-bound';
+}
+
+function zoneCardHtml(zone) {
+  const sideClass = zone.side === 'SUPPORT' ? 'support' : 'resistance';
+  const reachedClass = zone.status === 'REACHED' ? `reached ${sideClass}` : '';
+  const statusClass = zone.status === 'REACHED' ? `status-REACHED ${sideClass}` : `status-${zone.status}`;
+
+  let confirmationHtml = '';
+  if (zone.confirmation) {
+    const conf = zone.confirmation;
+    const badgeClass = conf.confirmed ? 'confirmed' : 'unconfirmed';
+    const badgeLabel = conf.confirmed
+      ? `&#10003; Confirmed (${conf.confirmations_passed}/${conf.confirmations_required} required)`
+      : `Not confirmed (${conf.confirmations_passed}/${conf.confirmations_required} required)`;
+    const items = conf.checks.map(c => `
+      <div class="checklist-item ${c.passed ? 'pass' : 'fail'}">
+        <span class="mark">${c.passed ? '&#10003;' : '&#8226;'}</span>
+        <span>${c.name.replaceAll('_',' ')}</span>
+      </div>`).join('');
+    confirmationHtml = `
+      <div class="confirmation-badge ${badgeClass}">${badgeLabel}</div>
+      <div class="checklist-toggle">Show confirmation checks &#9662;</div>
+      <div class="checklist" style="display:none;">${items}</div>`;
+  }
+
+  let optionHtml = '';
+  if (zone.option) {
+    const o = zone.option;
+    optionHtml = `
+      <div class="option-card">
+        <span><strong>${o.call_put}</strong> $${o.strike} &middot; exp ${o.expiration} &middot; ${o.dte}d</span>
+        <span>mid $${o.mid_price} <span class="otm-label">(${(o.otm_pct * 100).toFixed(1)}% OTM)</span></span>
+      </div>`;
+  } else if (zone.status === 'REACHED' && zone.option_status === 'NOT_CONFIRMED') {
+    optionHtml = `<div class="option-card"><span class="otm-label">Reached, but not enough confirmation signs &mdash; no trade suggested</span></div>`;
+  } else if (zone.status === 'REACHED' && zone.option_status !== 'NOT_ATTEMPTED') {
+    optionHtml = `<div class="option-card"><span class="otm-label">${zone.option_status.replaceAll('_',' ')}</span></div>`;
+  }
+
+  return `
+    <div class="zone-card ${reachedClass}">
+      <div class="zone-top">
+        <span class="zone-range">$${zone.zone_low} &ndash; $${zone.zone_high}</span>
+        <span class="zone-dist">${(zone.distance_pct * 100).toFixed(2)}% away</span>
+      </div>
+      <div class="stars">${star(zone.strength_stars)}</div>
+      <div class="zone-meta">
+        <span class="status-badge ${statusClass}">${zone.status}</span>
+        ${zone.timeframes_present.map(tf => `<span class="chip">${tf}</span>`).join('')}
+        ${zone.level_types_present.map(lt => `<span class="chip">${lt}</span>`).join('')}
+      </div>
+      ${confirmationHtml}
+      ${optionHtml}
+    </div>`;
+}
+
+async function runScan(symbol) {
+  const results = document.getElementById('results');
+  results.innerHTML = `<div class="loading"><div class="spinner"></div>Analyzing ${symbol}&hellip;</div>`;
+
+  try {
+    const res = await fetch(`${API}/levels/${encodeURIComponent(symbol)}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderResults(data);
+  } catch (e) {
+    results.innerHTML = `<div class="error-box">${e.message}</div>`;
+  }
+}
+
+function renderResults(data) {
+  const results = document.getElementById('results');
+
+  const priceBanner = `
+    <div class="price-banner show">
+      <div class="sym">${data.symbol}</div>
+      <div class="px">$${data.current_price}</div>
+      <div class="trend-badge trend-${data.trend}">${trendLabel(data.trend)}</div>
+    </div>`;
+
+  const supportHtml = data.support_levels.length
+    ? data.support_levels.map(zoneCardHtml).join('')
+    : `<div class="empty-state">No support zones found</div>`;
+
+  const resistanceHtml = data.resistance_levels.length
+    ? data.resistance_levels.map(zoneCardHtml).join('')
+    : `<div class="empty-state">No resistance zones found</div>`;
+
+  results.innerHTML = `
+    ${priceBanner}
+    <div class="columns">
+      <div>
+        <div class="col-title support"><span class="dot support"></span>Support (below price)</div>
+        ${supportHtml}
+      </div>
+      <div>
+        <div class="col-title resistance"><span class="dot resistance"></span>Resistance (above price)</div>
+        ${resistanceHtml}
+      </div>
+    </div>`;
+}
+
+async function loadJournal() {
+  const container = document.getElementById('journal-results');
+  container.innerHTML = `<div class="loading"><div class="spinner"></div>Loading journal&hellip;</div>`;
+  try {
+    const res = await fetch(`${API}/journal?limit=100`);
+    const entries = await res.json();
+    if (!entries.length) {
+      container.innerHTML = `<div class="empty-state">No journal entries yet &mdash; scan a symbol whose zone is REACHED to log one.</div>`;
+      return;
+    }
+    const rows = entries.map(e => `
+      <tr>
+        <td>${new Date(e.created_at).toLocaleString()}</td>
+        <td><strong>${e.symbol}</strong></td>
+        <td class="side-tag ${e.side}">${e.side}</td>
+        <td>$${e.zone_low}&ndash;$${e.zone_high}</td>
+        <td>${star(e.strength_stars)}</td>
+        <td>${e.option_call_put ? `${e.option_call_put} $${e.option_strike} @ $${e.option_mid_price}` : '&mdash;'}</td>
+      </tr>`).join('');
+    container.innerHTML = `
+      <table class="journal-table">
+        <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Zone</th><th>Strength</th><th>Option</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (e) {
+    container.innerHTML = `<div class="error-box">Failed to load journal: ${e.message}</div>`;
+  }
+}
+
+// ---------- Wiring ----------
+document.getElementById('symbol-input').addEventListener('input', (e) => renderAutocomplete(e.target.value));
+document.getElementById('symbol-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('autocomplete-list').classList.remove('open');
+    runScan(e.target.value.trim().toUpperCase());
+  }
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrap')) {
+    document.getElementById('autocomplete-list').classList.remove('open');
+  }
+});
+
+document.getElementById('results').addEventListener('click', (e) => {
+  if (e.target.classList.contains('checklist-toggle')) {
+    const list = e.target.nextElementSibling;
+    list.style.display = list.style.display === 'none' ? 'flex' : 'none';
+  }
+});
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.getAttribute('data-tab');
+    document.getElementById('tab-scan').style.display = tab === 'scan' ? '' : 'none';
+    document.getElementById('tab-journal').style.display = tab === 'journal' ? '' : 'none';
+    if (tab === 'journal') loadJournal();
+  });
+});
+
+loadUniverse();
+</script>
+</body>
+</html>
